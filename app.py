@@ -27,8 +27,17 @@ with tab_totals:
     @st.cache_data(ttl=600)  # Caches for 10 minutes
     def scrape_free_production_lines():
         url = "https://site.api.espn.com/sbin/fastcast/v1/sports/baseball/leagues/mlb/events"
+        
+        # Stealth browser headers to bypass HTTP 403 Forbidden blocks
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.espn.com/'
+        }
+        
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=15) as response:
                 raw_data = json.loads(response.read().decode())
             
