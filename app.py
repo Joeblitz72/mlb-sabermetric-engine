@@ -26,7 +26,6 @@ with tab_totals:
 
     @st.cache_data(ttl=600)  # Caches for 10 minutes
     def scrape_free_production_lines():
-        # Open source public unauthenticated scoreboard feed
         url = "https://site.api.espn.com/sbin/fastcast/v1/sports/baseball/leagues/mlb/events"
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -46,7 +45,6 @@ with tab_totals:
                 if len(competitors) < 2:
                     continue
                 
-                # Identify Home vs Away squads
                 if competitors[0].get('homeAway') == 'home':
                     home_team = competitors[0]['team']['displayName']
                     away_team = competitors[1]['team']['displayName']
@@ -56,7 +54,7 @@ with tab_totals:
                 
                 live_feed.append({
                     "game": f"{away_team} @ {home_team}",
-                    "market_total": 8.5,   # Default line baseline for slate mapping
+                    "market_total": 8.5,
                     "home_sp_xfip": 4.20,
                     "away_sp_xfip": 4.20,
                     "home_team_wrc": 100,
@@ -77,5 +75,4 @@ with tab_totals:
             totals_df[['game', 'market_total', 'Projected Total', 'Target Bet', 'System Advantage (%)']], 
             use_container_width=True, 
             hide_index=True
-        )
         )
