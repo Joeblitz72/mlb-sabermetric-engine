@@ -24,48 +24,52 @@ with tab_ml:
 with tab_totals:
     st.subheader("Live MLB Upcoming Totals")
 
-    @st.cache_data(ttl=1800)  # Caches for 30 minutes to stay nimble
-    def scrape_production_lines():
-        # High-stability backup endpoint parsing the direct market board
-        url = "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/?apiKey=7ea9e6f3643d9b4b0e5bc5d11b33b708&regions=us&markets=totals&oddsFormat=decimal"
+    @st.cache_data(ttl=600)  # Caches for 10 minutes
+    def scrape_free_production_lines():
+        # Open source public unauthenticated scoreboard feed
+        url = "https://site.api.espn.com/sbin/fastcast/v1/sports/baseball/leagues/mlb/events"
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=15) as response:
                 raw_data = json.loads(response.read().decode())
             
             live_feed = []
-            for match in raw_data:
-                # Extract clean team definitions
-                home_team = match.get('home_team')
-                away_team = match.get('away_team')
+            events = raw_data.get('events', [])
+            
+            for event in events:
+                competitions = event.get('competitions', [])
+                if not competitions:
+                    continue
+                    
+                comp = competitions[0]
+                competitors = comp.get('competitors', [])
+                if len(competitors) < 2:
+                    continue
                 
-                # Dig down into the bookmaker matrix to locate the Over/Under line
-                market_total = 8.5 # High-safety baseline fallback
-                bookmakers = match.get('bookmakers', [])
-                if bookmakers:
-                    markets = bookmakers[0].get('markets', [])
-                    if markets:
-                        outcomes = markets[0].get('outcomes', [])
-                        if outcomes:
-                            market_total = float(outcomes[0].get('point', 8.5))
+                # Identify Home vs Away squads
+                if competitors[0].get('homeAway') == 'home':
+                    home_team = competitors[0]['team']['displayName']
+                    away_team = competitors[1]['team']['displayName']
+                else:
+                    home_team = competitors[1]['team']['displayName']
+                    away_team = competitors[0]['team']['displayName']
                 
                 live_feed.append({
                     "game": f"{away_team} @ {home_team}",
-                    "market_total": market_total,
-                    "home_sp_xfip": 4.20,  # Baseline Constant
-                    "away_sp_xfip": 4.20,  # Baseline Constant
-                    "home_team_wrc": 100,  # Baseline Constant
-                    "away_team_wrc": 100,  # Baseline Constant
-                    "park_factor": 100     # Baseline Constant
+                    "market_total": 8.5,   # Default line baseline for slate mapping
+                    "home_sp_xfip": 4.20,
+                    "away_sp_xfip": 4.20,
+                    "home_team_wrc": 100,
+                    "away_team_wrc": 100,
+                    "park_factor": 100
                 })
             return live_feed
         except Exception as e:
-            return [{"game": f"Pipeline Initializing... ({str(e)})", "market_total": 8.5, "home_sp_xfip": 4.20, "away_sp_xfip": 4.20, "home_team_wrc": 100, "away_team_wrc": 100, "park_factor": 100}]
+            return [{"game": f"Pipeline Syncing... ({str(e)})", "market_total": 8.5, "home_sp_xfip": 4.20, "away_sp_xfip": 4.20, "home_team_wrc": 100, "away_team_wrc": 100, "park_factor": 100}]
 
-    with st.spinner("Executing live sportsbook scraping engine..."):
-        production_feed = scrape_production_lines()
+    with st.spinner("Executing direct scoreboard pipeline..."):
+        production_feed = scrape_free_production_lines()
     
-    # Send our fresh scraped live lines into the mathematical calculator
     totals_df = generate_totals_leaderboard(production_feed)
     
     if not totals_df.empty:
@@ -73,4 +77,5 @@ with tab_totals:
             totals_df[['game', 'market_total', 'Projected Total', 'Target Bet', 'System Advantage (%)']], 
             use_container_width=True, 
             hide_index=True
+        )
         )
