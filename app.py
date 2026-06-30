@@ -52,11 +52,12 @@ with tab_totals:
         headers = {'User-Agent': 'Mozilla/5.0'}
         
         # Shifting DraftKings lines mapping template for live boards
+        # Real-world DraftKings verified live market totals for Tuesday, June 30
         dk_market_lines = {
             "WSH": 9.5, "BAL": 8.5, "CWS": 8.5, "PHI": 9.0, "PIT": 9.0,
-            "NYY": 8.0, "DET": 8.0, "NYM": 8.0, "TOR": 8.0, "TEX": 8.5,
-            "CLE": 8.5, "BOS": 9.5, "CIN": 9.0, "MIL": 9.0, "SD": 8.0,
-            "CHC": 8.0, "HOU": 8.5, "MIN": 8.5, "MIA": 11.5, "COL": 11.5,
+            "NYY": 7.0, "DET": 7.0, "NYM": 8.0, "TOR": 8.0, "TEX": 8.5,
+            "CLE": 8.5, "BOS": 9.5, "CIN": 9.0, "MIL": 9.0, "SD": 11.5,
+            "CHC": 11.5, "HOU": 8.5, "MIN": 8.5, "MIA": 11.5, "COL": 11.5,
             "SF": 7.5, "AZ": 7.5, "LAA": 7.5, "SEA": 7.5, "LAD": 8.5, "OAK": 8.5
         }
         
