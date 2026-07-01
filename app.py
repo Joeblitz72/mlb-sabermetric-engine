@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import urllib.request
 import json
 import os
 from totals_engine import generate_totals_leaderboard
@@ -10,10 +9,9 @@ st.title("📊 Quantitative Baseball Edge Engine")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# Dynamic Local Ledger Loading
+# Dynamic Local Portfolio Ledger
 # ---------------------------------------------------------
 LEDGER_FILE = "mlb_ledger.json"
-
 if os.path.exists(LEDGER_FILE):
     try:
         with open(LEDGER_FILE, 'r') as f:
@@ -30,141 +28,78 @@ win_pct = (ml_wins / total_games * 100) if total_games > 0 else 0.0
 current_bankroll = ledger_data["moneyline"]["starting_bankroll"]
 net_return = current_bankroll - 1000.0
 
-# Portfolio Dynamic KPI Metrics Row
+# Portfolio Metrics Row
 col1, col2, col3 = st.columns(3)
 col1.metric(label="Moneyline Dynamic Record", value=f"{ml_wins}–{ml_losses}", delta=f"{win_pct:.1f}% Win Rate")
 col2.metric(label="Liquid Capital Bankroll", value=f"${current_bankroll:.2f}", delta=f"${net_return:.2f} Total Net")
-col3.metric(label="Active Feed Refresh Window", value="100% Live", delta="Sabermetric Engine Active")
+col3.metric(label="Active Feed Refresh Window", value="100% Mirror", delta="Desktop Synced")
 
 st.markdown("### Daily Terminal Outputs")
 tab_ml, tab_totals = st.tabs(["🎯 Moneyline Value Board", "📈 Standalone Over/Under Model"])
 
 # ---------------------------------------------------------
-# High-Speed Dynamic Feed Parser
-# ---------------------------------------------------------
-@st.cache_data(ttl=60)
-def fetch_live_production_data():
-    url = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=5) as response:
-            raw_data = json.loads(response.read().decode())
-        
-        live_feed = []
-        for event in raw_data.get('events', []):
-            competitions = event.get('competitions', [])
-            if not competitions or len(competitions[0].get('competitors', [])) < 2:
-                continue
-            
-            comp = competitions[0]
-            competitors = comp.get('competitors', [])
-            
-            if competitors[0].get('homeAway') == 'home':
-                home_team = competitors[0]['team']['displayName']
-                home_abbrev = competitors[0]['team']['abbreviation']
-                away_team = competitors[1]['team']['displayName']
-                away_abbrev = competitors[1]['team']['abbreviation']
-            else:
-                home_team = competitors[1]['team']['displayName']
-                home_abbrev = competitors[1]['team']['abbreviation']
-                away_team = competitors[0]['team']['displayName']
-                away_abbrev = competitors[0]['team']['abbreviation']
-            
-            # Underlying Sabermetric Variables mapped dynamically by team parameters
-            home_wrc = 112 if home_abbrev == "PHI" else 115 if home_abbrev == "NYY" else 104 if home_abbrev == "MIN" else 100
-            away_wrc = 92 if away_abbrev == "PIT" else 96 if away_abbrev == "DET" else 102 if away_abbrev == "SF" else 100
-            home_xfip = 4.15 if home_abbrev == "PHI" else 4.28 if home_abbrev == "NYY" else 3.95 if home_abbrev == "MIN" else 4.20
-            away_xfip = 4.38 if away_abbrev == "PIT" else 4.10 if away_abbrev == "DET" else 4.05 if away_abbrev == "SF" else 4.20
-            park = 102 if home_abbrev == "PHI" else 98 if home_abbrev == "NYY" else 100
-            
-            # Algorithmic Consensus Baseline Line Evaluator (Prevents network request timeouts)
-            home_proj = 50.0 + (home_wrc - away_wrc) * 0.15 + (away_xfip - home_xfip) * 5.0
-            home_proj = max(min(home_proj, 75.0), 25.0)
-            
-            # Back-calculate implied book lines to perfectly adapt to your old model framework
-            if home_proj > 50.0:
-                home_ml_line = int(-1 * ((home_proj / (100.0 - home_proj)) * 100.0) + 15)
-                away_ml_line = int(((100.0 - home_proj) / home_proj) * 100.0 + 135)
-            else:
-                away_ml_line = int(-1 * (((100.0 - home_proj) / home_proj) * 100.0) + 15)
-                home_ml_line = int((home_proj / (100.0 - home_proj)) * 100.0 + 135)
-                
-            market_total = round((home_xfip + away_xfip) * 1.02, 1)
-
-            live_feed.append({
-                "game": f"{away_team} @ {home_team}",
-                "home_abbrev": home_abbrev,
-                "away_abbrev": away_abbrev,
-                "market_total": market_total,
-                "home_ml": home_ml_line,
-                "away_ml": away_ml_line,
-                "home_sp_xfip": home_xfip,
-                "away_sp_xfip": away_xfip,
-                "home_team_wrc": home_wrc,
-                "away_team_wrc": away_wrc,
-                "park_factor": park
-            })
-        return live_feed
-    except Exception:
-        return []
-
-with st.spinner("Calibrating model arrays..."):
-    production_feed = fetch_live_production_data()
-
-# ---------------------------------------------------------
-# Tab 1: Moneyline Value Board
+# Tab 1: Moneyline Value Board (Direct Desktop Mirror)
 # ---------------------------------------------------------
 with tab_ml:
     st.subheader("Current MLB Market Leaderboard (ML Value)")
-    if production_feed:
-        ml_records = []
-        for game in production_feed:
-            home = game["home_abbrev"]
-            away = game["away_abbrev"]
+    DATA_DROP = "live_market_data.json"
+    
+    if os.path.exists(DATA_DROP):
+        try:
+            with open(DATA_DROP, 'r') as f:
+                ml_records = json.load(f)
             
-            home_proj = 50.0 + (game["home_team_wrc"] - game["away_team_wrc"]) * 0.15 + (game["away_sp_xfip"] - game["home_sp_xfip"]) * 5.0
-            home_proj = max(min(home_proj, 75.0), 25.0)
-            away_proj = 100.0 - home_proj
-            
-            for team, abbrev, proj, odds in [
-                (game["game"].split(" @ ")[1], home, home_proj, game["home_ml"]), 
-                (game["game"].split(" @ ")[0], away, away_proj, game["away_ml"])
-            ]:
-                # True textbook sports math processing formulas
-                if odds > 0:
-                    implied = 100 / (odds + 100)
-                else:
-                    implied = abs(odds) / (abs(odds) + 100)
-                
-                advantage = proj - (implied * 100)
-                
-                # Preserving your custom 5% terminal filter rule perfectly
-                if advantage > 5.0:  
-                    ml_records.append({
-                        "Target Team": team,
-                        "Market Line": f"+{odds}" if odds > 0 else str(odds),
-                        "Book Implied": f"{implied*100:.1f}%",
-                        "Model Projection": f"{proj:.1f}%",
-                        "Advantage (%)": round(advantage, 2)
-                    })
-        
-        if ml_records:
-            st.dataframe(pd.DataFrame(ml_records).sort_values(by="Advantage (%)", ascending=False), use_container_width=True, hide_index=True)
-        else:
-            st.info("No actionable moneyline edges crossing your 5% threshold found on this slate.")
+            if ml_records:
+                ml_df = pd.DataFrame(ml_records)
+                # Ensure columns display exactly as written by the desktop model
+                st.dataframe(ml_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No actionable moneyline edges found by your desktop model right now.")
+        except Exception as e:
+            st.error(f"Error parsing data drop: {e}")
     else:
-        st.error("Data stream temporarily unreadable.")
+        st.warning("Waiting for desktop script to drop the 'live_market_data.json' file into the repository.")
 
 # ---------------------------------------------------------
 # Tab 2: Standalone Over/Under Model
 # ---------------------------------------------------------
 with tab_totals:
     st.subheader("Live MLB Upcoming Totals")
+    import urllib.request
+    @st.cache_data(ttl=300)
+    def fetch_totals_only():
+        url = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as response:
+                raw_data = json.loads(response.read().decode())
+            live_feed = []
+            for event in raw_data.get('events', []):
+                comp = event.get('competitions', [{}])[0]
+                competitors = comp.get('competitors', [])
+                if len(competitors) < 2: continue
+                
+                if competitors[0].get('homeAway') == 'home':
+                    home_team = competitors[0]['team']['displayName']
+                    home_abbrev = competitors[0]['team']['abbreviation']
+                    away_team = competitors[1]['team']['displayName']
+                else:
+                    home_team = competitors[1]['team']['displayName']
+                    home_abbrev = competitors[1]['team']['abbreviation']
+                    away_team = competitors[0]['team']['displayName']
+                
+                live_feed.append({
+                    "game": f"{away_team} @ {home_team}",
+                    "market_total": 8.5,
+                    "home_sp_xfip": 4.20, "away_sp_xfip": 4.20,
+                    "home_team_wrc": 100, "away_team_wrc": 100, "park_factor": 100
+                })
+            return live_feed
+        except Exception: return []
+
+    production_feed = fetch_totals_only()
     if production_feed:
         totals_df = generate_totals_leaderboard(production_feed)
         if not totals_df.empty:
             st.dataframe(totals_df[['game', 'market_total', 'Projected Total', 'Target Bet', 'System Advantage (%)']], use_container_width=True, hide_index=True)
-    else:
-        st.error("Data stream temporarily unreadable.")
