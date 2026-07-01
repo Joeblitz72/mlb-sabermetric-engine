@@ -1,17 +1,10 @@
 [
   {
-    "Target Team": "Boston Red Sox",
-    "Market Line": "+1240",
-    "Book Implied": "7.5%",
-    "Model Projection": "52.8%",
-    "Advantage (%)": 45.34
-  },
-  {
     "Target Team": "New York Yankees",
-    "Market Line": "+474",
-    "Book Implied": "17.4%",
+    "Market Line": "+870",
+    "Book Implied": "10.3%",
     "Model Projection": "57.6%",
-    "Advantage (%)": 40.18
+    "Advantage (%)": 47.29
   },
   {
     "Target Team": "Minnesota Twins",
@@ -26,6 +19,13 @@
     "Book Implied": "42.6%",
     "Model Projection": "49.0%",
     "Advantage (%)": 6.45
+  },
+  {
+    "Target Team": "New York Mets",
+    "Market Line": "+139",
+    "Book Implied": "41.8%",
+    "Model Projection": "48.0%",
+    "Advantage (%)": 6.16
   },
   {
     "Target Team": "Kansas City Royals",
