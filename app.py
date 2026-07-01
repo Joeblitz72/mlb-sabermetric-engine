@@ -15,8 +15,11 @@ st.markdown("---")
 LEDGER_FILE = "mlb_ledger.json"
 
 if os.path.exists(LEDGER_FILE):
-    with open(LEDGER_FILE, 'r') as f:
-        ledger_data = json.load(f)
+    try:
+        with open(LEDGER_FILE, 'r') as f:
+            ledger_data = json.load(f)
+    except Exception:
+        ledger_data = {"moneyline": {"wins": 25, "losses": 36, "starting_bankroll": 933.10}}
 else:
     ledger_data = {"moneyline": {"wins": 25, "losses": 36, "starting_bankroll": 933.10}}
 
@@ -37,17 +40,16 @@ st.markdown("### Daily Terminal Outputs")
 tab_ml, tab_totals = st.tabs(["🎯 Moneyline Value Board", "📈 Standalone Over/Under Model"])
 
 # ---------------------------------------------------------
-# Fully Automated Real-Time Unauthenticated Odds Scraper
+# Fully Automated Non-Blocking Odds Scraper
 # ---------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_live_production_data():
-    # Primary API Endpoint with built-in sports booking extensions
     scoreboard_url = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     
     try:
         req = urllib.request.Request(scoreboard_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             raw_data = json.loads(response.read().decode())
         
         live_feed = []
@@ -62,7 +64,6 @@ def fetch_live_production_data():
             comp = competitions[0]
             competitors = comp.get('competitors', [])
             
-            # Extract basic lineup fields
             if competitors[0].get('homeAway') == 'home':
                 home_team = competitors[0]['team']['displayName']
                 home_abbrev = competitors[0]['team']['abbreviation']
@@ -74,29 +75,25 @@ def fetch_live_production_data():
                 away_team = competitors[0]['team']['displayName']
                 away_abbrev = competitors[0]['team']['abbreviation']
 
-            # --- DYNAMIC ODDS FETCH FROM THE ODDS CORE ENGINE ---
-            market_total = 8.5  # Intelligent system fallback
-            home_ml_line = -110 # Balanced baseline line split fallback
+            # --- ANTI-FREEZE ODDS PROTECTION LOOP ---
+            market_total = 8.5  
+            home_ml_line = -110 
             away_ml_line = -110
             
             try:
                 odds_url = f"https://sports.core.api.espn.com/v2/sports/baseball/leagues/mlb/events/{event_id}/competitions/{event_id}/odds"
                 odds_req = urllib.request.Request(odds_url, headers=headers)
-                with urllib.request.urlopen(odds_req, timeout=5) as odds_resp:
+                # Strict 3-second timeout prevents the app from hanging infinitely
+                with urllib.request.urlopen(odds_req, timeout=3) as odds_resp:
                     odds_data = json.loads(odds_resp.read().decode())
                     items = odds_data.get('items', [])
                     if items:
-                        # Grab primary tracked sportsbook values (Consensus / DraftKings alternative feeds)
                         primary_odds = items[0]
                         market_total = primary_odds.get('overUnder', 8.5)
-                        
-                        # Parse out team moneylines dynamically
-                        away_odds_obj = primary_odds.get('awayMarket', {})
-                        home_odds_obj = primary_odds.get('homeMarket', {})
-                        away_ml_line = away_odds_obj.get('american', -110)
-                        home_ml_line = home_odds_obj.get('american', -110)
+                        away_ml_line = primary_odds.get('awayMarket', {}).get('american', -110)
+                        home_ml_line = primary_odds.get('homeMarket', {}).get('american', -110)
             except Exception:
-                pass # Gracefully run fallback targets if a game's market lines haven't posted yet
+                pass # If it hits a wall, pass instantly so the screen doesn't freeze
                 
             live_feed.append({
                 "game": f"{away_team} @ {home_team}",
@@ -126,12 +123,10 @@ with tab_ml:
     
     if production_feed:
         ml_records = []
-        
         for game in production_feed:
             home = game["home_abbrev"]
             away = game["away_abbrev"]
             
-            # Execute your exact standard projection algorithm
             home_proj = 50.0 + (game["home_team_wrc"] - game["away_team_wrc"]) * 0.15 + (game["away_sp_xfip"] - game["home_sp_xfip"]) * 5.0
             home_proj = max(min(home_proj, 75.0), 25.0)
             away_proj = 100.0 - home_proj
@@ -140,15 +135,13 @@ with tab_ml:
                 (game["game"].split(" @ ")[1], home, home_proj, game["home_ml"]), 
                 (game["game"].split(" @ ")[0], away, away_proj, game["away_ml"])
             ]:
-                # True sportsbook logic calculations to stop formula distortion
                 if odds > 0:
                     implied = 100 / (odds + 100)
                 else:
                     implied = abs(odds) / (abs(odds) + 100)
                 
                 advantage = proj - (implied * 100)
-                
-                if advantage > 5.0:  # Preserving your exact model threshold filter
+                if advantage > 5.0:  
                     ml_records.append({
                         "Target Team": team,
                         "Market Line": f"+{odds}" if odds > 0 else str(odds),
