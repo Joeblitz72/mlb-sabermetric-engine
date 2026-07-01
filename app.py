@@ -31,32 +31,30 @@ net_return = current_bankroll - 1000.0
 col1, col2, col3 = st.columns(3)
 col1.metric(label="Moneyline Dynamic Record", value=f"{ml_wins}–{ml_losses}", delta=f"{win_pct:.1f}% Win Rate")
 col2.metric(label="Liquid Capital Bankroll", value=f"${current_bankroll:.2f}", delta=f"${net_return:.2f} Total Net")
-col3.metric(label="Active Feed Refresh Window", value="100% Live", delta="Dual Engine Active")
+col3.metric(label="Active Feed Refresh Window", value="100% Live", delta="Scraper API Active")
 
 st.markdown("### Daily Terminal Outputs")
 tab_ml, tab_totals = st.tabs(["🎯 Moneyline Value Board", "📈 Standalone Over/Under Model"])
 
-# Consensus DraftKings Lines Shared Matrix
-dk_market_lines = {
-    "WSH": 9.5, "BAL": 8.5, "CWS": 8.5, "PHI": 9.0, "PIT": 9.0,
-    "NYY": 7.0, "DET": 7.0, "NYM": 8.0, "TOR": 8.0, "TEX": 8.5,
-    "CLE": 8.5, "BOS": 9.5, "CIN": 9.0, "MIL": 9.0, "SD": 11.5,
-    "CHC": 11.5, "HOU": 8.5, "MIN": 8.5, "MIA": 11.5, "COL": 11.5,
-    "SF": 7.5, "AZ": 7.5, "LAA": 7.5, "SEA": 7.5, "LAD": 8.5, "OAK": 8.5
-}
-
-# Shared Scoreboard Scraper Pipeline
+# ---------------------------------------------------------
+# Fully Automated Real-Time Unauthenticated Odds Scraper
+# ---------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_live_production_data():
-    url = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    # Primary API Endpoint with built-in sports booking extensions
+    scoreboard_url = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    
     try:
-        req = urllib.request.Request(url, headers=headers)
+        req = urllib.request.Request(scoreboard_url, headers=headers)
         with urllib.request.urlopen(req, timeout=15) as response:
             raw_data = json.loads(response.read().decode())
         
         live_feed = []
-        for event in raw_data.get('events', []):
+        events = raw_data.get('events', [])
+        
+        for event in events:
+            event_id = event.get('id')
             competitions = event.get('competitions', [])
             if not competitions or len(competitions[0].get('competitors', [])) < 2:
                 continue
@@ -64,6 +62,7 @@ def fetch_live_production_data():
             comp = competitions[0]
             competitors = comp.get('competitors', [])
             
+            # Extract basic lineup fields
             if competitors[0].get('homeAway') == 'home':
                 home_team = competitors[0]['team']['displayName']
                 home_abbrev = competitors[0]['team']['abbreviation']
@@ -74,14 +73,38 @@ def fetch_live_production_data():
                 home_abbrev = competitors[1]['team']['abbreviation']
                 away_team = competitors[0]['team']['displayName']
                 away_abbrev = competitors[0]['team']['abbreviation']
+
+            # --- DYNAMIC ODDS FETCH FROM THE ODDS CORE ENGINE ---
+            market_total = 8.5  # Intelligent system fallback
+            home_ml_line = -110 # Balanced baseline line split fallback
+            away_ml_line = -110
             
-            market_total = dk_market_lines.get(home_abbrev, 8.5)
-            
+            try:
+                odds_url = f"https://sports.core.api.espn.com/v2/sports/baseball/leagues/mlb/events/{event_id}/competitions/{event_id}/odds"
+                odds_req = urllib.request.Request(odds_url, headers=headers)
+                with urllib.request.urlopen(odds_req, timeout=5) as odds_resp:
+                    odds_data = json.loads(odds_resp.read().decode())
+                    items = odds_data.get('items', [])
+                    if items:
+                        # Grab primary tracked sportsbook values (Consensus / DraftKings alternative feeds)
+                        primary_odds = items[0]
+                        market_total = primary_odds.get('overUnder', 8.5)
+                        
+                        # Parse out team moneylines dynamically
+                        away_odds_obj = primary_odds.get('awayMarket', {})
+                        home_odds_obj = primary_odds.get('homeMarket', {})
+                        away_ml_line = away_odds_obj.get('american', -110)
+                        home_ml_line = home_odds_obj.get('american', -110)
+            except Exception:
+                pass # Gracefully run fallback targets if a game's market lines haven't posted yet
+                
             live_feed.append({
                 "game": f"{away_team} @ {home_team}",
                 "home_abbrev": home_abbrev,
                 "away_abbrev": away_abbrev,
                 "market_total": market_total,
+                "home_ml": int(home_ml_line),
+                "away_ml": int(away_ml_line),
                 "home_sp_xfip": 4.15 if home_abbrev == "PHI" else 4.28 if home_abbrev == "NYY" else 4.20,
                 "away_sp_xfip": 4.38 if away_abbrev == "PIT" else 4.10 if away_abbrev == "DET" else 4.20,
                 "home_team_wrc": 112 if home_abbrev == "PHI" else 115 if home_abbrev == "NYY" else 100,
@@ -92,34 +115,32 @@ def fetch_live_production_data():
     except Exception as e:
         return []
 
-with st.spinner("Processing dual board metrics..."):
+with st.spinner("Processing dynamic odds scraper matrices..."):
     production_feed = fetch_live_production_data()
 
 # ---------------------------------------------------------
-# Tab 1: Embedded Moneyline Engine
+# Tab 1: Live Scraping Moneyline Engine
 # ---------------------------------------------------------
 with tab_ml:
     st.subheader("Current MLB Market Leaderboard (ML Value)")
     
     if production_feed:
         ml_records = []
-        # Fallback dictionary representing DraftKings moneyline data context
-        ml_odds_mock = {
-            "PIT": 163, "PHI": -180, "DET": 150, "NYY": -165, "WSH": 144, "BOS": -155,
-            "LAA": 170, "SEA": -190, "SD": 130, "CHC": -145, "MIN": 118, "HOU": -130
-        }
         
         for game in production_feed:
             home = game["home_abbrev"]
             away = game["away_abbrev"]
             
-            # Run your exact baseline projection algorithm logic
+            # Execute your exact standard projection algorithm
             home_proj = 50.0 + (game["home_team_wrc"] - game["away_team_wrc"]) * 0.15 + (game["away_sp_xfip"] - game["home_sp_xfip"]) * 5.0
             home_proj = max(min(home_proj, 75.0), 25.0)
             away_proj = 100.0 - home_proj
             
-            for team, abbrev, proj in [(game["game"].split(" @ ")[1], home, home_proj), (game["game"].split(" @ ")[0], away, away_proj)]:
-                odds = ml_odds_mock.get(abbrev, 100)
+            for team, abbrev, proj, odds in [
+                (game["game"].split(" @ ")[1], home, home_proj, game["home_ml"]), 
+                (game["game"].split(" @ ")[0], away, away_proj, game["away_ml"])
+            ]:
+                # True sportsbook logic calculations to stop formula distortion
                 if odds > 0:
                     implied = 100 / (odds + 100)
                 else:
@@ -127,7 +148,7 @@ with tab_ml:
                 
                 advantage = proj - (implied * 100)
                 
-                if advantage > 5.0:  # Your exact system threshold parameter
+                if advantage > 5.0:  # Preserving your exact model threshold filter
                     ml_records.append({
                         "Target Team": team,
                         "Market Line": f"+{odds}" if odds > 0 else str(odds),
@@ -140,12 +161,12 @@ with tab_ml:
             ml_df = pd.DataFrame(ml_records).sort_values(by="Advantage (%)", ascending=False)
             st.dataframe(ml_df, use_container_width=True, hide_index=True)
         else:
-            st.info("No actionable moneyline edges meeting the baseline threshold found on the current slate.")
+            st.info("No actionable moneyline edges meeting the 5% threshold found on today's live feed.")
     else:
         st.error("Unable to load team schedules for Moneyline parsing.")
 
 # ---------------------------------------------------------
-# Tab 2: Over/Under Engine
+# Tab 2: Live Scraping Over/Under Engine
 # ---------------------------------------------------------
 with tab_totals:
     st.subheader("Live MLB Upcoming Totals")
